@@ -15,7 +15,9 @@ def showImage(img: NDArray):
     plt.show()
 
 
-def convert_to_gray(img: NDArray, rgb_weights: tuple = (0.299, 0.587, 0.114)) -> NDArray:
+def convert_to_gray(
+    img: NDArray, rgb_weights: tuple = (0.299, 0.587, 0.114)
+) -> NDArray:
     b, g, r = img[:, :, 0], img[:, :, 1], img[:, :, 2]
     r_weight, g_weight, b_weight = rgb_weights
     gray = (r_weight * r + g_weight * g + b_weight * b).astype(np.uint8)
