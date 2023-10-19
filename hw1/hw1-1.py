@@ -1,32 +1,10 @@
-from operator import is_
-from unicodedata import is_normalized
 import numpy as np
 import matplotlib.pyplot as plt
 
 from PIL import Image
 from numpy.typing import NDArray
 
-
-def showImage(img: Image.Image | NDArray):
-    if img.mode == 'L':
-        plt.imshow(img, cmap='gray', vmin=0, vmax=255)
-    else:
-        plt.imshow(img)
-    plt.axis('off')
-    plt.show()
-
-
-# This function is not used
-def convert_to_gray(
-    img: Image.Image | NDArray, rgb_weights: tuple = (0.299, 0.587, 0.114)
-) -> Image.Image:
-    img_array = np.array(img)
-    r, g, b = img_array[:, :, 0], img_array[:, :, 1], img_array[:, :, 2]
-    r_weight, g_weight, b_weight = rgb_weights
-    gray_img_array = (r_weight * r + g_weight * g + b_weight * b).astype(
-        np.uint8
-    )
-    return Image.fromarray(gray_img_array, 'L')
+from utils import convert_to_gray, showImage
 
 
 def get_histogram(img: Image.Image) -> NDArray:
