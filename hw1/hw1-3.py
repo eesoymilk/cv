@@ -1,4 +1,5 @@
 import cv2 as cv
+import numpy as np
 import matplotlib.pyplot as plt
 
 from typing import Sequence
@@ -20,7 +21,14 @@ def match_features(
     return good
 
 
-def sift(img1: MatLike, img2: MatLike):
+def bf_match(des1: MatLike, des2: MatLike) -> MatLike:
+    """Optimized brute-force matching with ratio test using matrix operations."""
+    # Compute pairwise distances
+    distances = np.linalg.norm(des1[:, np.newaxis] - des2, axis=2)
+    print(distances.shape)
+
+
+def sift(img1: MatLike, img2: MatLike) -> MatLike:
     sift: cv.SIFT = cv.SIFT_create()
 
     res1: SiftDetectionResult = sift.detectAndCompute(img1, None)
@@ -28,17 +36,18 @@ def sift(img1: MatLike, img2: MatLike):
     kp1, des1 = res1
     kp2, des2 = res2
 
-    good = match_features(des1, des2)
+    # good = match_features(des1, des2)
+    bf_match(des1, des2)
 
-    return cv.drawMatchesKnn(
-        img1,
-        kp1,
-        img2,
-        kp2,
-        good,
-        None,
-        flags=cv.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS,
-    )
+    # return cv.drawMatchesKnn(
+    #     img1,
+    #     kp1,
+    #     img2,
+    #     kp2,
+    #     good,
+    #     None,
+    #     flags=cv.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS,
+    # )
 
 
 def main():
@@ -47,10 +56,10 @@ def main():
 
     img3 = sift(img1, img2)
 
-    plt.imshow(img3)
-    plt.tight_layout()
-    plt.axis('off')
-    plt.show()
+    # plt.imshow(img3)
+    # plt.tight_layout()
+    # plt.axis('off')
+    # plt.show()
 
 
 if __name__ == '__main__':
