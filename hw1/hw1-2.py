@@ -1,10 +1,37 @@
 import numpy as np
-
+import matplotlib.pyplot as plt
 from PIL import Image
-from scipy.ndimage import convolve, uniform_filter, maximum_filter
 from numpy.typing import NDArray
+from scipy.ndimage import convolve, uniform_filter, maximum_filter
 
-from utils import showImage
+
+def showImage(
+    img: Image.Image,
+    title: str | None = None,
+    fname: str | None = None,
+):
+    # Adjust figure size to match image aspect ratio
+    dpi = 80
+    width, height = img.size
+    figsize = width / dpi, height / dpi
+
+    fig = plt.figure(figsize=figsize, dpi=dpi)
+    ax = fig.add_axes([0, 0, 1, 1], frameon=False)
+
+    if img.mode == 'L':
+        ax.imshow(img, cmap='gray', vmin=0, vmax=255)
+    else:
+        ax.imshow(img)
+
+    ax.axis('off')
+
+    if title is not None:
+        ax.set_title(title)
+
+    if fname is not None:
+        plt.savefig(fname, bbox_inches='tight', pad_inches=0)
+
+    plt.show()
 
 
 def gaussian_kernel(sigma: float, kernel_size: int) -> NDArray:
@@ -21,14 +48,8 @@ def gaussian_kernel(sigma: float, kernel_size: int) -> NDArray:
 
 
 def gaussian_blur(
-    img: Image.Image, sigma: float = 3, kernel_size: int | None = None
+    img: Image.Image, sigma: float = 3, kernel_size: int = 3
 ) -> Image.Image:
-    if img.mode != 'L':
-        img = img.convert('L')
-
-    if kernel_size is None:
-        kernel_size = int(2 * np.ceil(3 * sigma) + 1)
-
     kernel = gaussian_kernel(sigma, kernel_size)
     img_array = np.array(img, dtype=np.float64)
     filtered_img_arrary = convolve(img_array, kernel).astype(np.uint8)
@@ -151,40 +172,50 @@ def mark_image(img: Image.Image, R: NDArray, dot_size: int = 5) -> Image.Image:
 def main():
     img = Image.open('hw1-2.jpg')
 
-    # Gaussian blur (also grayscaled)
+    img = img.convert('L')
     gaussian_blurred_img = gaussian_blur(img, 3, 3)
-    showImage(gaussian_blurred_img)
+    showImage(
+        gaussian_blurred_img,
+        'Gaussian blurred image',
+        'hw1-2_gaussian_blurred.png',
+    )
 
     # Sobel filter
     gx, gy = sobel(gaussian_blurred_img)
     gx_img = Image.fromarray(gx, 'L')
     gy_img = Image.fromarray(gy, 'L')
-    showImage(gx_img)
-    showImage(gy_img)
+    showImage(gx_img, 'Sobel filter (x direction)', 'hw1-2_gx.png')
+    showImage(gy_img, 'Sobel filter (y direction)', 'hw1-2_gy.png')
 
     # Harris corner detection
     R = harris_corner_detection(gx, gy)
     R_threshold_img = Image.fromarray(R, 'L')
-    showImage(R_threshold_img)
+    showImage(R_threshold_img, 'Harris corner detection', 'hw1-2_r.png')
 
     # nms
     R_nms = non_maximum_suppression(R)
     R_nms_img = Image.fromarray(R_nms, 'L')
-    showImage(R_nms_img)
+    showImage(R_nms_img, 'Non-maximum suppression', 'hw1-2_r_nms.png')
 
     # show the original image with corners marked
     marked_image = mark_image(gaussian_blurred_img, R_nms)
-    showImage(marked_image)
+    showImage(marked_image, 'Marked image', 'hw1-2_marked.png')
 
     # Try different window size when computing structure tensor
     R_2 = harris_corner_detection(gx, gy, window_size=7)
     R_2_img = Image.fromarray(R_2, 'L')
-    showImage(R_2_img)
+    showImage(
+        R_2_img, 'Harris corner detection (window size = 7)', 'hw1-2_r_2.png'
+    )
 
     # Try different threshold ratio
     R_3 = harris_corner_detection(gx, gy, threshold_ratio=0.05)
     R_3_img = Image.fromarray(R_3, 'L')
-    showImage(R_3_img)
+    showImage(
+        R_3_img,
+        'Harris corner detection (threshold ratio = 0.05)',
+        'hw1-2_r_3.png',
+    )
 
 
 if __name__ == '__main__':
