@@ -148,18 +148,30 @@ def plot_epipolar_lines_and_pts(
     x_vals: NDArray[np.float64],
     y_vals: NDArray[np.float64],
     pts: NDArray[np.float64],
-    ax: plt.Axes,
+    fname: str | None = None,
 ):
     '''Plot the epipolar lines and points on the image.'''
+    dpi = 80
+    height, width = image.shape[:2]
+    figsize = width / dpi, height / dpi
+
+    fig = plt.figure(figsize=figsize, dpi=dpi)
+    ax = fig.add_axes([0, 0, 1, 1], frameon=False)
     ax.set_xticks([])
     ax.set_yticks([])
     ax.set_xlim(0, image.shape[1])
     ax.set_ylim(image.shape[0], 0)
     ax.imshow(image)
+    ax.axis('off')
 
     for pt, y in zip(pts, y_vals.T):
         ax.plot(x_vals, y, linewidth=1)
         ax.scatter(pt[0], pt[1], s=10)
+
+    if fname is not None:
+        plt.savefig(output_dir / fname, bbox_inches='tight', pad_inches=0)
+
+    plt.show()
 
 
 def test_fundamental_mat(
@@ -168,25 +180,31 @@ def test_fundamental_mat(
     pts1: NDArray[np.float64],
     pts2: NDArray[np.float64],
     f: NDArray[np.float64],
-    title: str | None = None,
+    normalize: bool,
 ):
     '''Plot the epipolar lines and points on the images.'''
     h1, w1 = image1.shape[:2]
     h2, w2 = image2.shape[:2]
 
-    axs: list[plt.Axes] = plt.subplots(1, 2, figsize=(15, 8))[1]
+    # axs: list[plt.Axes] = plt.subplots(1, 2, figsize=(15, 8))[1]
 
     x_vals1, y_vals1 = get_epipolar_lines(pts2, f.T, h1, w1)
     x_vals2, y_vals2 = get_epipolar_lines(pts1, f, h2, w2)
 
-    plot_epipolar_lines_and_pts(image1, x_vals1, y_vals1, pts1, axs[0])
-    plot_epipolar_lines_and_pts(image2, x_vals2, y_vals2, pts2, axs[1])
-
-    if title is not None:
-        plt.suptitle(title)
-
-    plt.tight_layout()
-    plt.show()
+    plot_epipolar_lines_and_pts(
+        image1,
+        x_vals1,
+        y_vals1,
+        pts1,
+        f'{"wo_" if not normalize else ""}normalized_img1.jpg',
+    )
+    plot_epipolar_lines_and_pts(
+        image2,
+        x_vals2,
+        y_vals2,
+        pts2,
+        f'{"wo_" if not normalize else ""}normalized_img2.jpg',
+    )
 
 
 def average_epipolar_distance(
@@ -221,7 +239,7 @@ def main():
         pts1,
         pts2,
         f_wo_normalized,
-        title='Epipolar lines without normalization',
+        False,
     )
     test_fundamental_mat(
         image1,
@@ -229,7 +247,7 @@ def main():
         pts1,
         pts2,
         f_normalized,
-        title='Epipolar lines with normalization',
+        True,
     )
 
     # Calculate the average distances
