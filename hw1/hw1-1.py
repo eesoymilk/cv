@@ -4,7 +4,44 @@ import matplotlib.pyplot as plt
 from PIL import Image
 from numpy.typing import NDArray
 
-from utils import convert_to_gray, showImage
+
+def showImage(img: Image.Image, fname: str | None = None):
+    # Adjust figure size to match image aspect ratio
+    dpi = 80
+    width, height = img.size
+    figsize = width / dpi, height / dpi
+
+    fig = plt.figure(figsize=figsize, dpi=dpi)
+    ax = fig.add_axes([0, 0, 1, 1], frameon=False)
+
+    if img.mode == 'L':
+        ax.imshow(img, cmap='gray', vmin=0, vmax=255)
+    else:
+        ax.imshow(img)
+
+    ax.axis('off')
+
+    if fname is not None:
+        plt.savefig(fname, bbox_inches='tight', pad_inches=0)
+
+    plt.show()
+
+
+def showHistogram(
+    hist: NDArray,
+    fname: str | None = None,
+):
+    plt.figure()
+    plt.tight_layout()
+    plt.xlabel('Gray Level')
+    plt.xlim(0, 255)
+    plt.ylabel('Number of Pixels')
+    plt.bar(np.arange(256), hist)
+    plt.grid()
+
+    if fname is not None:
+        plt.savefig(fname)
+    plt.show()
 
 
 def get_histogram(img: Image.Image) -> NDArray:
@@ -12,49 +49,24 @@ def get_histogram(img: Image.Image) -> NDArray:
     for pixel in img.getdata():
         histogram[pixel] += 1
 
-    for i in range(255):
-        histogram[i + 1] += histogram[i]
-
     return histogram
 
 
-def normalize_histogram(histogram: NDArray) -> NDArray:
-    return histogram * 255 / histogram[255]
-
-
-def plot_histogram(histogram: NDArray, is_normalized: bool = False):
-    plt.figure()
-    plt.xlabel('Gray Level')
-    plt.xlim(0, 255)
-    plt.bar(np.arange(256), histogram)
-
-    if is_normalized:
-        plt.title('Normalized Histogram')
-        plt.ylabel('Output')
-        plt.ylim(0, 255)
-    else:
-        plt.title('Histogram')
-        plt.ylabel('Number of Pixels')
-
-    plt.grid()
-    plt.show()
-
-
-def historgram_equalization(
-    img: Image.Image, verbose: bool = False
-) -> Image.Image:
+def histogram_equalization(
+    img: Image.Image,
+) -> tuple[NDArray, Image.Image, NDArray]:
     histogram = get_histogram(img)
-    normalized_histogram = normalize_histogram(histogram)
+    cdf = np.cumsum(histogram)
+    normalized_cdf = cdf * 255 / cdf[255]
 
-    if verbose:
-        plot_histogram(histogram)
-        plot_histogram(normalized_histogram, is_normalized=True)
+    equalized_img = img.point(lambda x: normalized_cdf[x], 'L')
+    equalized_histogram = get_histogram(equalized_img)
 
-    return img.point(lambda x: normalized_histogram[x], 'L')
+    return img, histogram, equalized_img, equalized_histogram
 
 
-def image_comparison(img: Image.Image, equlized_img: Image.Image):
-    plt.figure()
+def image_comparison(img: Image.Image, equalized_img: Image.Image):
+    plt.figure(figsize=(10, 5))
 
     plt.subplot(1, 2, 1)
     plt.tight_layout()
@@ -65,21 +77,43 @@ def image_comparison(img: Image.Image, equlized_img: Image.Image):
     plt.subplot(1, 2, 2)
     plt.tight_layout()
     plt.title('Equalized Image')
-    plt.imshow(equlized_img, cmap='gray', vmin=0, vmax=255)
+    plt.imshow(equalized_img, cmap='gray', vmin=0, vmax=255)
     plt.axis('off')
 
+    plt.savefig('hw1-1_images.png')
+    plt.show()
+
+
+def histogram_comparison(histogram: NDArray, equalized_histogram: NDArray):
+    plt.figure(figsize=(12, 6))
+
+    plt.subplot(1, 2, 1)
+    plt.tight_layout()
+    plt.title('Original Histogram')
+    plt.xlabel('Gray Level')
+    plt.xlim(0, 255)
+    plt.bar(np.arange(256), histogram)
+    plt.grid()
+
+    plt.subplot(1, 2, 2)
+    plt.tight_layout()
+    plt.subplots_adjust(wspace=0.15)
+    plt.title('Equalized Histogram')
+    plt.xlabel('Gray Level')
+    plt.xlim(0, 255)
+    plt.bar(np.arange(256), equalized_histogram)
+    plt.grid()
+
+    plt.savefig('hw1-1_histograms.png')
     plt.show()
 
 
 def main():
     img = Image.open('hw1-1.jpg')
-
-    # convert the image to grayscale if it is not
-    if img.mode != 'L':
-        img = convert_to_gray(img)
-
-    equlized_img = historgram_equalization(img, verbose=True)
-    image_comparison(img, equlized_img)
+    img = img.convert('L')
+    img, hist, equalized_img, equalized_hist = histogram_equalization(img)
+    image_comparison(img, equalized_img)
+    histogram_comparison(hist, equalized_hist)
 
 
 if __name__ == '__main__':
