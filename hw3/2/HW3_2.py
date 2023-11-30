@@ -150,6 +150,20 @@ def kmeans_pp(
     return kmeans_clustering(img, k, means, threshold, n_iterations)
 
 
+def group_pixels(
+    pixels: MatLike,
+    size: int,
+):
+    color = np.linspace(0, 255, size, dtype=np.float32)
+    xx, yy, zz = np.meshgrid(color, color, color)
+    points = np.stack((xx, yy, zz), axis=-1).astype(np.float32)
+    points = points.reshape(-1, 3)
+    kdtree = scipy_spatial.KDTree(points)
+    _, cloest_groups = kdtree.query(pixels)
+
+    return cloest_groups, points
+
+
 def meanshift(
     img: MatLike,
     band_width: int = 5,
@@ -160,14 +174,9 @@ def meanshift(
 
     # flatten img and append x and y coordinates to each pixel
     img_flat = img.reshape((-1, channels))
-    img_flat = np.hstack((img_flat, np.tile(np.arange(width), height)[:, None]))
-    img_flat = np.hstack(
-        (img_flat, np.repeat(np.arange(height), width)[:, None])
-    )
     img_tree = scipy_spatial.KDTree(img_flat)
 
-    print(img_flat[:5])
-
+    # initialize means
     means = np.copy(img_flat)
     means_stable = np.zeros(means.shape[0], dtype=bool)
     threshold_squared = threshold**2
@@ -197,19 +206,22 @@ def meanshift(
         # update means
         means[unstable_indices] = updated_means
 
-        stability_count_increment = np.sum(means_stable) - stability_progress.n
-
-        stability_progress.update(stability_count_increment)
-
         # Check convergence
+        stability_count_increment = np.sum(means_stable) - stability_progress.n
+        stability_progress.update(stability_count_increment)
         if np.all(means_stable) or stability_count_increment == 0:
             break
 
-    return means[:, :3].reshape((height, width, channels)).astype(np.uint8)
+    return means.reshape((height, width, channels)).astype(np.uint8)
 
 
 def main():
     image = cv.imread('2-image.jpg')
+    # print(image.shape)
+
+    # image_grouped_idx, image_grouped = group_pixels(image.reshape((-1, 3)), 10)
+    # print(image_grouped.shape)
+
     # showImageCV(image)
 
     # # perform k-means clustering
@@ -223,7 +235,7 @@ def main():
     # perform mean-shift clustering
     profiler = cProfile.Profile()
     profiler.enable()
-    img_meanshift = meanshift(image, band_width=5, threshold=0.001)
+    img_meanshift = meanshift(image, band_width=10, threshold=0.001)
     profiler.disable()
     profiler.dump_stats("profile_results.prof")
     stats = pstats.Stats("profile_results.prof")
