@@ -1,5 +1,3 @@
-import pstats
-import cProfile
 from pathlib import Path
 
 import cv2 as cv
@@ -14,10 +12,18 @@ from scipy.spatial import distance as scipy_distance
 
 script_dir = Path(__file__).parent.absolute()
 output_dir = script_dir / 'output'
+image_name = '2-masterpiece'
+ext = 'png'
+
+# create output directory if not exists
+if not output_dir.exists():
+    output_dir.mkdir(parents=True, exist_ok=True)
 
 
 def showImageCV(
-    img: MatLike, title: str | None = None, fname: str | None = None
+    img: MatLike,
+    fname: str | None = None,
+    show_plot: bool = True,
 ):
     # Convert BGR image (OpenCV default) to RGB for visualization
     if len(img.shape) == 3:  # if the image has channels
@@ -44,7 +50,10 @@ def showImageCV(
     if fname is not None:
         plt.savefig(fname, bbox_inches='tight', pad_inches=0)
 
-    plt.show()
+    if show_plot:
+        plt.show()
+
+    plt.close(fig)
 
 
 def kmeans_clustering(
@@ -59,7 +68,7 @@ def kmeans_clustering(
     prev_means = np.copy(means)
 
     # Iterate until convergence or max iterations
-    for i in np.arange(n_iterations):
+    for i in trange(n_iterations):
         # Compute pairwise distances and assign clusters
         distances = scipy_distance.cdist(img, means, 'euclidean')
         cluster_assignments = np.argmin(distances, axis=1)
@@ -150,40 +159,98 @@ def kmeans_pp(
     return kmeans_clustering(img, k, means, threshold, n_iterations)
 
 
-def group_pixels(
-    pixels: MatLike,
-    size: int,
+def plot_rgb_space(
+    img: NDArray, fname: Path | str | None = None, show_plot: bool = True
 ):
-    color = np.linspace(0, 255, size, dtype=np.float32)
-    xx, yy, zz = np.meshgrid(color, color, color)
-    points = np.stack((xx, yy, zz), axis=-1).astype(np.float32)
-    points = points.reshape(-1, 3)
-    kdtree = scipy_spatial.KDTree(points)
-    _, cloest_groups = kdtree.query(pixels)
+    _, _, channels = img.shape
+    img_norm = img.astype(np.float32) / 255
+    img_flat = img_norm.reshape((-1, channels))
+    img_flat_rgb = img_flat[..., ::-1]
 
-    return cloest_groups, points
+    # Create a new figure
+    fig = plt.figure()
+    ax = fig.add_subplot(projection='3d')
+
+    ax.scatter(
+        img_flat_rgb[:, 0],
+        img_flat_rgb[:, 1],
+        img_flat_rgb[:, 2],
+        color=[tuple(color) for color in img_flat_rgb[:, :3]],
+    )
+
+    # Set labels
+    ax.set_xlabel('R')
+    ax.set_ylabel('G')
+    ax.set_zlabel('B')
+
+    if fname is not None:
+        plt.savefig(fname, bbox_inches='tight', pad_inches=0)
+
+    if show_plot:
+        plt.show()
+
+    plt.close(fig)
+
+
+def group_pixels(
+    img_flat: MatLike,
+    width: int,
+    height: int,
+    size: int,
+    spatial: bool = False,
+):
+    color = np.linspace(0, 255, size, dtype=np.float32) / 255
+
+    if spatial:
+        # Add spatial coordinates with size
+        x_line = np.linspace(0, width, size, dtype=np.float32) / width
+        y_line = np.linspace(0, height, size, dtype=np.float32) / height
+        bb, gg, rr, xx, yy = np.meshgrid(color, color, color, x_line, y_line)
+        pts = np.stack((bb, gg, rr, xx, yy), axis=-1).astype(np.float32)
+        pts = pts.reshape(-1, 5)
+    else:
+        bb, gg, rr = np.meshgrid(color, color, color)
+        pts = np.stack((bb, gg, rr), axis=-1).astype(np.float32)
+        pts = pts.reshape(-1, 3)
+
+    kdtree = scipy_spatial.KDTree(pts)
+    _, cloest_groups = kdtree.query(img_flat)
+
+    return cloest_groups, pts
 
 
 def meanshift(
     img: MatLike,
+    grouping_size: int = 5,
     band_width: int = 5,
     threshold: float = 0.1,
-    n_iterations: int = 100,
+    n_iterations: int = 50,
+    spatial: bool = False,
+    verbose: bool = False,
 ):
     height, width, channels = img.shape
+    img_norm = img.astype(np.float32) / 255
+    img_flat = img_norm.reshape((-1, channels))
+    threshold_squared = threshold**2
 
-    # flatten img and append x and y coordinates to each pixel
-    img_flat = img.reshape((-1, channels))
+    if spatial:
+        x = (np.linspace(0, width, width, dtype=np.float32) / width,)
+        y = (np.linspace(0, height, height, dtype=np.float32) / height,)
+        xx, yy = np.meshgrid(x, y)
+        img_flat = np.concatenate((img_flat, xx.reshape(-1, 1)), axis=1)
+        img_flat = np.concatenate((img_flat, yy.reshape(-1, 1)), axis=1)
+
     img_tree = scipy_spatial.KDTree(img_flat)
+    grouped_indices, means = group_pixels(
+        img_flat, width, height, grouping_size, spatial=spatial
+    )
 
     # initialize means
-    means = np.copy(img_flat)
     means_stable = np.zeros(means.shape[0], dtype=bool)
-    threshold_squared = threshold**2
 
     # Iterate over the number of iterations
     stability_progress = tqdm(total=means.shape[0], desc='Stability')
-    for iteration in np.arange(n_iterations):
+    for iteration in trange(n_iterations, desc='Iteration'):
         unstable_indices = np.where(~means_stable)[0]
         means_tree = scipy_spatial.KDTree(means[unstable_indices])
 
@@ -192,12 +259,17 @@ def meanshift(
         )
 
         updated_means = np.copy(means[unstable_indices])
+        n_neighborless = 0
         for i, neighbors in enumerate(neigbors_list):
             if len(neighbors) == 0:
+                n_neighborless += 1
                 continue
-            updated_means[i] = np.mean(means[neighbors], axis=0)
+            updated_means[i] = np.mean(img_flat[neighbors], axis=0)
 
-        # Check convergence
+        if n_neighborless > 0 and verbose:
+            print(f'#{iteration}: {n_neighborless} pixels have no neighbors')
+
+        # Check convergence using distance between means
         delta_squared = np.sum(
             (updated_means - means[unstable_indices]) ** 2, axis=1
         )
@@ -207,41 +279,75 @@ def meanshift(
         means[unstable_indices] = updated_means
 
         # Check convergence
-        stability_count_increment = np.sum(means_stable) - stability_progress.n
-        stability_progress.update(stability_count_increment)
-        if np.all(means_stable) or stability_count_increment == 0:
+        stability_progress.update(np.sum(means_stable) - stability_progress.n)
+        if np.all(means_stable):
             break
 
-    return means.reshape((height, width, channels)).astype(np.uint8)
+    return (
+        (means[grouped_indices, :3] * 255)
+        .reshape((height, width, channels))
+        .astype(np.uint8)
+    )
 
 
 def main():
-    image = cv.imread('2-image.jpg')
-    # print(image.shape)
+    show_plot = True
 
-    # image_grouped_idx, image_grouped = group_pixels(image.reshape((-1, 3)), 10)
-    # print(image_grouped.shape)
+    image = cv.imread(f'{image_name}.{ext}')
+    showImageCV(image, show_plot=show_plot)
 
-    # showImageCV(image)
-
-    # # perform k-means clustering
-    # img_clustered = kmeans(image, 4)
-    # showImageCV(img_clustered)
-
-    # # perform k-means++ clustering
-    # img_clustered_pp = kmeans_pp(image, 4)
-    # showImageCV(img_clustered_pp)
+    # perform k-means and k-means++ clustering
+    ks = [4, 8, 16]
+    for k in ks:
+        print(f'{k}-means Clustering')
+        img_clustered = kmeans(image, k)
+        showImageCV(
+            img_clustered,
+            fname=output_dir / f'{image_name}-k{k}.png',
+            show_plot=show_plot,
+        )
+        print(f'{k}-means++ Clustering')
+        img_clustered_pp = kmeans_pp(image, k, n_iterations=200)
+        showImageCV(
+            img_clustered_pp,
+            fname=output_dir / f'{image_name}-kpp{k}.png',
+            show_plot=show_plot,
+        )
 
     # perform mean-shift clustering
-    profiler = cProfile.Profile()
-    profiler.enable()
-    img_meanshift = meanshift(image, band_width=10, threshold=0.001)
-    profiler.disable()
-    profiler.dump_stats("profile_results.prof")
-    stats = pstats.Stats("profile_results.prof")
-    stats.sort_stats(pstats.SortKey.TIME)
-    stats.print_stats(20)
-    showImageCV(img_meanshift)
+    print('Mean-shift Clustering')
+    band_widths = [0.1, 0.2, 0.4]
+    plot_rgb_space(
+        image, fname=output_dir / f'{image_name}-rgb.png', show_plot=show_plot
+    )
+    for band_width in band_widths:
+        fname = f'{image_name}-ms{f"{band_width}".split(".")[1]}'
+
+        print(f'band_width={band_width}')
+        img_meanshift = meanshift(
+            image, grouping_size=4, band_width=band_width, threshold=0.01
+        )
+        plot_rgb_space(
+            img_meanshift,
+            fname=output_dir / f'{fname}-rgb.png',
+            show_plot=show_plot,
+        )
+        showImageCV(
+            img_meanshift,
+            fname=output_dir / f'{fname}.png',
+            show_plot=show_plot,
+        )
+
+    # perform mean-shift clustering with spatial coordinates
+    print('Mean-shift Clustering with Spatial Coordinates')
+    img_meanshift_spatial = meanshift(
+        image, grouping_size=5, band_width=0.3, threshold=0.01, spatial=True
+    )
+    showImageCV(
+        img_meanshift_spatial,
+        fname=output_dir / f'{image_name}-ms-spatial.png',
+        show_plot=show_plot,
+    )
 
 
 if __name__ == '__main__':

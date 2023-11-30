@@ -15,6 +15,10 @@ SiftDetectionResult = tuple[Sequence[cv.KeyPoint], MatLike]
 script_dir = Path(__file__).parent.absolute()
 output_dir = script_dir / 'output'
 
+# create output directory if not exists
+if not output_dir.exists():
+    output_dir.mkdir(parents=True, exist_ok=True)
+
 
 def showImageCV(
     img: MatLike, title: str | None = None, fname: str | None = None
@@ -225,6 +229,78 @@ def main():
 
     for i, result in enumerate(results_ransac):
         showImageCV(result, fname=output_dir / f'1-b{i}.jpg')
+
+    # draw 3 deviation vectors in the same image
+    deviation_result = np.copy(image)
+    box_points = np.array(
+        [
+            [
+                [99, 222],
+                [1003, 231],
+                [994, 1317],
+                [126, 1347],
+            ],
+            [
+                [69, 120],
+                [1036, 120],
+                [1033, 1335],
+                [84, 1335],
+            ],
+            [
+                [135, 189],
+                [985, 180],
+                [964, 1383],
+                [135, 1392],
+            ],
+        ]
+    )
+
+    for (h, inlier_matches), box_pt, (book_kps, _) in zip(
+        ransacs_matches, box_points, books_sift_results
+    ):
+        # Transform the box points using the homography matrix
+        transformed_pts = h @ np.hstack((box_pt, np.ones((4, 1)))).T
+        transformed_pts = transformed_pts.T[:, :2] / transformed_pts.T[:, 2:]
+
+        # Generate a random color for the polygon
+        poly_color = tuple(np.random.randint(0, 256, 3).tolist())
+
+        # Draw the transformed polygon
+        pts = np.int32(transformed_pts).reshape((-1, 1, 2))
+        deviation_result = cv.polylines(
+            deviation_result,
+            [pts],
+            isClosed=True,
+            color=poly_color,
+            thickness=5,
+        )
+
+        # Draw deviation vectors for each inlier match
+        vec_color = tuple(np.random.randint(0, 256, 3).tolist())
+        for _match in inlier_matches:
+            src_pt = np.array(book_kps[_match.queryIdx].pt)  # Source point
+            dst_pt = np.array(
+                image_kps[_match.trainIdx].pt
+            )  # Corresponding point in the destination image
+
+            # Apply homography to the source point
+            homo_src_pt = np.array([src_pt[0], src_pt[1], 1])
+            transformed_src_pt = np.dot(h, homo_src_pt)
+            transformed_src_pt = (transformed_src_pt / transformed_src_pt[2])[
+                :2
+            ]
+
+            # Draw the deviation vector
+
+            deviation_result = cv.line(
+                deviation_result,
+                tuple(np.int32(transformed_src_pt)),
+                tuple(np.int32(dst_pt)),
+                vec_color,
+                2,
+            )
+
+    showImageCV(deviation_result, fname=output_dir / '1-b3')
 
 
 if __name__ == '__main__':
