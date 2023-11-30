@@ -1,3 +1,5 @@
+import pstats
+import cProfile
 from pathlib import Path
 
 import cv2 as cv
@@ -158,47 +160,57 @@ def meanshift(
 
     # flatten img and append x and y coordinates to each pixel
     img_flat = img.reshape((-1, channels))
-    kd_tree = scipy_spatial.KDTree(img_flat)
+    img_flat = np.hstack((img_flat, np.tile(np.arange(width), height)[:, None]))
+    img_flat = np.hstack(
+        (img_flat, np.repeat(np.arange(height), width)[:, None])
+    )
+    img_tree = scipy_spatial.KDTree(img_flat)
+
+    print(img_flat[:5])
 
     means = np.copy(img_flat)
     means_stable = np.zeros(means.shape[0], dtype=bool)
     threshold_squared = threshold**2
 
     # Iterate over the number of iterations
-    for _ in np.arange(n_iterations):
+    stability_progress = tqdm(total=means.shape[0], desc='Stability')
+    for iteration in np.arange(n_iterations):
         unstable_indices = np.where(~means_stable)[0]
+        means_tree = scipy_spatial.KDTree(means[unstable_indices])
 
-        for i in unstable_indices:
-            neighbors = kd_tree.query_ball_point(
-                means[i], band_width, p=2, eps=0
-            )
+        neigbors_list = means_tree.query_ball_tree(
+            img_tree, band_width, p=2, eps=0
+        )
 
+        updated_means = np.copy(means[unstable_indices])
+        for i, neighbors in enumerate(neigbors_list):
             if len(neighbors) == 0:
-                means_stable[i] = True
                 continue
-
-            # Update mean to be the average of all pixels within the band_width
-            updated_mean = np.mean(means[neighbors], axis=0)
-
-            # Check convergence
-            delta_squared = np.sum((updated_mean - means[i]) ** 2)
-            if delta_squared < threshold_squared:
-                means_stable[i] = True
-
-            # update mean
-            means[i] = updated_mean
-
-        print(f'#{_ + 1}: {np.sum(means_stable) / len(means):.2%} stable')
+            updated_means[i] = np.mean(means[neighbors], axis=0)
 
         # Check convergence
-        if np.all(means_stable):
+        delta_squared = np.sum(
+            (updated_means - means[unstable_indices]) ** 2, axis=1
+        )
+        means_stable[unstable_indices] = delta_squared < threshold_squared
+
+        # update means
+        means[unstable_indices] = updated_means
+
+        stability_count_increment = np.sum(means_stable) - stability_progress.n
+
+        stability_progress.update(stability_count_increment)
+
+        # Check convergence
+        if np.all(means_stable) or stability_count_increment == 0:
             break
 
-    return means.reshape((height, width, channels)).astype(np.uint8)
+    return means[:, :3].reshape((height, width, channels)).astype(np.uint8)
 
 
 def main():
     image = cv.imread('2-image.jpg')
+    # showImageCV(image)
 
     # # perform k-means clustering
     # img_clustered = kmeans(image, 4)
@@ -209,7 +221,14 @@ def main():
     # showImageCV(img_clustered_pp)
 
     # perform mean-shift clustering
-    img_meanshift = meanshift(image, band_width=4, threshold=1)
+    profiler = cProfile.Profile()
+    profiler.enable()
+    img_meanshift = meanshift(image, band_width=5, threshold=0.001)
+    profiler.disable()
+    profiler.dump_stats("profile_results.prof")
+    stats = pstats.Stats("profile_results.prof")
+    stats.sort_stats(pstats.SortKey.TIME)
+    stats.print_stats(20)
     showImageCV(img_meanshift)
 
 

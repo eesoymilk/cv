@@ -2,7 +2,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from PIL import Image
+from pathlib import Path
 from numpy.typing import NDArray
+
+script_dir = Path(__file__).parent.absolute()
+asset_dir = script_dir / 'assets'
+output_dir = script_dir / 'output'
 
 
 def showImage(img: Image.Image, fname: str | None = None):
@@ -80,7 +85,10 @@ def image_comparison(img: Image.Image, equalized_img: Image.Image):
     plt.imshow(equalized_img, cmap='gray', vmin=0, vmax=255)
     plt.axis('off')
 
-    plt.savefig('hw1-1_images.png')
+    # save equalized image alone
+    equalized_img.save(output_dir / 'backrooms.jpg')
+
+    # plt.savefig('hw1-1_images.png')
     plt.show()
 
 
@@ -104,12 +112,12 @@ def histogram_comparison(histogram: NDArray, equalized_histogram: NDArray):
     plt.bar(np.arange(256), equalized_histogram)
     plt.grid()
 
-    plt.savefig('hw1-1_histograms.png')
+    # plt.savefig('hw1-1_histograms.png')
     plt.show()
 
 
 def main():
-    img = Image.open('hw1-1.jpg')
+    img = Image.open(asset_dir / 'backrooms.jpg')
     img = img.convert('L')
     img, hist, equalized_img, equalized_hist = histogram_equalization(img)
     image_comparison(img, equalized_img)

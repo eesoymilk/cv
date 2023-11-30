@@ -152,11 +152,9 @@ class HomographyFinder:
         x_src, y_src = x_src[valid_mask], y_src[valid_mask]
         x_tar, y_tar = (x_tar[valid_mask], y_tar[valid_mask])
 
-        # Calculate the integer parts and fractional parts of the source coordinates
-        x0 = np.floor(x_src).astype(int)
-        y0 = np.floor(y_src).astype(int)
-        x1 = np.ceil(x_src).astype(int)
-        y1 = np.ceil(y_src).astype(int)
+        # Calculate the bounds of the target coordinate
+        x0, y0 = np.floor((x_src, y_src)).astype(int)
+        x1, y1 = np.ceil((x_src, y_src)).astype(int)
 
         # Calculate the weights and pixel values for interpolation
         wx = x_src - x0
