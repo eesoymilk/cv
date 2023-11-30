@@ -1,5 +1,10 @@
 .vscode
 .DS_Store
+output/
+*.zip
+*.ppt
+*.rar
+*.pptx
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
